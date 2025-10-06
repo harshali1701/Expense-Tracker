@@ -1,0 +1,141 @@
+import tkinter as tk
+from tkinter import messagebox
+from tkinter import ttk
+import mysql.connector
+from datetime import datetime
+
+def conn():
+    return mysql.connector.connect(
+        host="localhost",
+        user="root",
+        password="root",
+        database="expense_tracker"
+    )
+
+def add_expense_gui():
+    category = category_entry.get()
+    description = description_entry.get()
+    amount = amount_entry.get()
+    date_str = date_entry.get()
+    try:
+        amount = float(amount)
+        date = date_str if date_str else datetime.today().strftime('%Y-%m-%d')
+        con = conn()
+        cursor = con.cursor()
+        cursor.execute('''INSERT INTO expense(date, amount, category, description)
+                          VALUES (%s, %s, %s, %s)''', (date, amount, category, description))
+        con.commit()
+        cursor.close()
+        con.close()
+        messagebox.showinfo("Success", "Expense added successfully!")
+    except Exception as e:
+        messagebox.showerror("Error", str(e))
+
+def view_all_gui():
+    con = conn()
+    cursor = con.cursor()
+    cursor.execute("SELECT * FROM expense")
+    records = cursor.fetchall()
+    cursor.close()
+    con.close()
+    for row in tree.get_children():
+        tree.delete(row)
+    for row in records:
+        tree.insert("", "end", values=row)
+
+def delete_expense_gui():
+    try:
+        row_id = int(delete_entry.get())
+        con = conn()
+        cursor = con.cursor()
+        cursor.execute("DELETE FROM expense WHERE id = %s", (row_id,))
+        con.commit()
+        cursor.close()
+        con.close()
+        messagebox.showinfo("Deleted", "Expense deleted successfully!")
+    except Exception as e:
+        messagebox.showerror("Error", str(e))
+
+def summary_gui():
+    try:
+        month = int(month_entry.get())
+        year = int(year_entry.get())
+        con = conn()
+        cursor = con.cursor()
+        cursor.execute('''SELECT SUM(amount), category FROM expense
+                          WHERE YEAR(date) = %s AND MONTH(date) = %s
+                          GROUP BY category''', (year, month))
+        records = cursor.fetchall()
+        cursor.close()
+        con.close()
+        summary_text.delete("1.0", tk.END)
+        for row in records:
+            summary_text.insert(tk.END, f"{row[1]}: ₹{row[0]}\n")
+    except Exception as e:
+        messagebox.showerror("Error", str(e))
+
+# GUI Setup
+root = tk.Tk()
+root.title("Expense Tracker")
+
+# Add Expense Section
+tk.Label(root, text="Category").grid(row=0, column=0)
+category_entry = tk.Entry(root)
+category_entry.grid(row=0, column=1)
+
+tk.Label(root, text="Description").grid(row=1, column=0)
+description_entry = tk.Entry(root)
+description_entry.grid(row=1, column=1)
+
+tk.Label(root, text="Amount").grid(row=2, column=0)
+amount_entry = tk.Entry(root)
+amount_entry.grid(row=2, column=1)
+
+tk.Label(root, text="Date (yyyy-mm-dd)").grid(row=3, column=0)
+date_entry = tk.Entry(root)
+date_entry.grid(row=3, column=1)
+
+tk.Button(root, text="Add Expense", command=add_expense_gui).grid(row=4, column=0, columnspan=2)
+
+# View Expenses Section
+tree = ttk.Treeview(root, columns=("ID", "Date", "Amount", "Category", "Description"), show="headings")
+for col in tree["columns"]:
+    tree.heading(col, text=col)
+tree.grid(row=5, column=0, columnspan=2)
+tk.Button(root, text="View All Expenses", command=view_all_gui).grid(row=6, column=0, columnspan=2)
+
+# Delete Expense Section
+def delete_multiple_expenses_gui():
+    try:
+        ids = delete_entry.get()
+        id_list = [int(i.strip()) for i in ids.split(",") if i.strip().isdigit()]
+        if not id_list:
+            raise ValueError("No valid IDs provided.")
+        con = conn()
+        cursor = con.cursor()
+        cursor.executemany("DELETE FROM expense WHERE id = %s", [(i,) for i in id_list])
+        con.commit()
+        cursor.close()
+        con.close()
+        messagebox.showinfo("Deleted", f"Deleted records with IDs: {', '.join(map(str, id_list))}")
+    except Exception as e:
+        messagebox.showerror("Error", str(e))
+tk.Label(root, text="Delete Expense(s) by ID (comma-separated)").grid(row=7, column=0)
+delete_entry = tk.Entry(root)
+delete_entry.grid(row=7, column=1)
+tk.Button(root, text="Delete Selected Expenses", command=delete_multiple_expenses_gui).grid(row=8, column=0, columnspan=2)
+
+# Summary Section
+tk.Label(root, text="Month (1-12)").grid(row=9, column=0)
+month_entry = tk.Entry(root)
+month_entry.grid(row=9, column=1)
+
+tk.Label(root, text="Year (YYYY)").grid(row=10, column=0)
+year_entry = tk.Entry(root)
+year_entry.grid(row=10, column=1)
+
+tk.Button(root, text="Show Monthly Summary", command=summary_gui).grid(row=11, column=0, columnspan=2)
+summary_text = tk.Text(root, height=5, width=40)
+summary_text.grid(row=12, column=0, columnspan=2)
+
+root.mainloop()
